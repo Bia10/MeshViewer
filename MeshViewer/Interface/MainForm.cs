@@ -13,6 +13,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -55,18 +56,14 @@ namespace MeshViewer.Interface
             Game.OnDespawn += _playerExplorer.OnDespawn;
             Game.OnUpdate += _playerExplorer.OnUpdate;
 
-            Task.Factory.StartNew(() => {
+            new Thread(() => {
                 while (!_clientUpdaterToken.IsCancellationRequested)
                 {
                     Game.Update();
 
-                    if (Game.InGame && Game.LocalPlayer != null)
-                        BeginInvoke((Action)(() => toolStripStatusLabel1.Text = $"Logged in as {Game.LocalPlayer.Name} (Map #{Game.CurrentMap})"));
-
-                    // _clientUpdaterToken.Token.WaitHandle.WaitOne(ObjectMgr.UpdateFrequency);
+                    _clientUpdaterToken.Token.WaitHandle.WaitOne(100); // Throttling
                 }
-
-            }, _clientUpdaterToken.Token);
+            }) { Name = "UpdaterThread" }.Start();
         }
 
         /// <summary>
@@ -135,9 +132,9 @@ namespace MeshViewer.Interface
 #if DEBUG
             glControl1.Context.ErrorChecking = true;
 
-            // GL.Enable(EnableCap.DebugOutput);
-            // GL.Enable(EnableCap.DebugOutputSynchronous);
-            /*GL.DebugMessageCallback((DebugSource source, DebugType type, int id, DebugSeverity severity, int length, IntPtr messagePtr, IntPtr errorParam) =>
+            GL.Enable(EnableCap.DebugOutput);
+            GL.Enable(EnableCap.DebugOutputSynchronous);
+            GL.DebugMessageCallback((DebugSource source, DebugType type, int id, DebugSeverity severity, int length, IntPtr messagePtr, IntPtr errorParam) =>
             {
                 if (id == 131169 || id == 131185 || id == 131218 || id == 131204)
                     return;
@@ -164,10 +161,9 @@ namespace MeshViewer.Interface
 
                 Console.WriteLine(message);
                 Console.ForegroundColor = oldForegroundColor;
-            }, IntPtr.Zero);*/
+            }, IntPtr.Zero);
 
 #endif
-            glControl1.Paint += (_, __) => Render();
             glControl1.Resize += (_, __) => {
                 GL.Viewport(0, 0, glControl1.Width, glControl1.Height);
 
@@ -178,6 +174,7 @@ namespace MeshViewer.Interface
             GL.ClearColor(Color.Black);
             GL.Clear(ClearBufferMask.DepthBufferBit | ClearBufferMask.StencilBufferBit);
             GL.Enable(EnableCap.DepthTest);
+            GL.DepthFunc(DepthFunction.Less);
             GL.Enable(EnableCap.Multisample);
             GL.Enable(EnableCap.CullFace);
             GL.CullFace(CullFaceMode.Back);
@@ -208,7 +205,9 @@ namespace MeshViewer.Interface
             _unitExplorer.SetDataSource(Game.Units);
             _gameObjectExplorer.SetDataSource(Game.GameObjects);
 
-            BeginInvoke((Action)(() => glControl1.Invalidate()));
+            BeginInvoke((Action)(() => toolStripStatusLabel1.Text = $"Logged in as {Game.LocalPlayer?.Name} (Map #{Game.CurrentMap})"));
+
+            Render();
         }
 
         #region Terrain Rendering
@@ -229,10 +228,8 @@ namespace MeshViewer.Interface
             ///   ._ Y
             ///  /
             /// X
-            Task.Factory.StartNew(() =>
-            {
+            Task.Factory.StartNew(() => {
                 GeometryLoader = new GeometryLoader(directoryPickerDialog.FileName, Game.CurrentMap);
-                BeginInvoke((Action)(() => glControl1.Invalidate()));
             });
         }
 
@@ -268,7 +265,6 @@ namespace MeshViewer.Interface
             GL.ReadPixels(0, 0, glControl1.ClientSize.Width, glControl1.ClientSize.Height, OpenTK.Graphics.OpenGL.PixelFormat.Bgr, PixelType.UnsignedByte, data.Scan0);
             bmp.UnlockBits(data);
             bmp.RotateFlip(RotateFlipType.RotateNoneFlipY);
-
 
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {

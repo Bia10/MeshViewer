@@ -142,28 +142,33 @@ namespace MeshViewer.Memory
             _currentManager = Game.Read<IntPtr>(Game.Read<int>(Cataclysm.CurMgrPointer) + Cataclysm.CurMgrOffset, true);
             _localGUID = Game.Read<ulong>(_currentManager + LocalGUID, true);
 
-            var newEntities = Enumerate().ToDictionary(@object => @object.OBJECT_FIELD_GUID.Value);
-
-            foreach (var oldEntity in _entities)
+            try
             {
-                if (newEntities.ContainsKey(oldEntity.Key))
+                var newEntities = Enumerate().ToDictionary(@object => @object.OBJECT_FIELD_GUID.Value);
+
+                foreach (var oldEntity in _entities)
                 {
-                    oldEntity.Value.UpdateBaseAddress(newEntities[oldEntity.Key].BaseAddress);
+                    if (newEntities.ContainsKey(oldEntity.Key))
+                    {
+                        oldEntity.Value.UpdateBaseAddress(newEntities[oldEntity.Key].BaseAddress);
 
-                    OnUpdate?.Invoke(oldEntity.Value);
+                        OnUpdate?.Invoke(oldEntity.Value);
+                    }
+                    else
+                        OnDespawn?.Invoke(oldEntity.Value);
                 }
-                else
-                    OnDespawn?.Invoke(oldEntity.Value);
+
+                foreach (var newEntity in newEntities)
+                    if (!_entities.ContainsKey(newEntity.Key))
+                        OnSpawn?.Invoke(newEntity.Value);
+
+                _entities.Clear();
+                _entities = newEntities;
+
+                OnUpdateTick?.Invoke();
+            } catch (Exception e) {
+                Console.WriteLine(e);
             }
-
-            foreach (var newEntity in newEntities)
-                if (!_entities.ContainsKey(newEntity.Key))
-                    OnSpawn?.Invoke(newEntity.Value);
-
-            _entities.Clear();
-            _entities = newEntities;
-
-            OnUpdateTick?.Invoke();
         }
 
         public bool InGame => Game.Read<byte>(Cataclysm.OnLoginScreen) == 0;
